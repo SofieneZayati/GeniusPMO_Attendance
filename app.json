@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "Genius PMO Attendance",
+    "slug": "genius-pmo-attendance",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "android": {
+      "package": "com.geniuspmo.attendance"
+    },
+    "ios": {
+      "bundleIdentifier": "com.geniuspmo.attendance",
+      "supportsTablet": false
+    }
+  }
+}
