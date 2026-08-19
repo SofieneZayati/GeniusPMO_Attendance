@@ -1,5 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -9,9 +12,10 @@ import {
   TextInput,
   View
 } from "react-native";
-import { demoToday } from "./src/data/demo";
+import { HrmsApiError, hrmsApi } from "./src/api/hrms";
+import { sessionStore } from "./src/auth/session";
 import { colors } from "./src/theme";
-import type { MobileTodayResponse, WorkMode } from "./src/types";
+import type { CurrentUser, MobileTodayResponse, WorkMode } from "./src/types";
 
 type Tab = "today" | "profile";
 
@@ -19,54 +23,192 @@ const workModeCopy: Record<WorkMode, { icon: string; label: string; detail: stri
   office: {
     icon: "🏢",
     label: "Office",
-    detail: "Company network verification required"
+    detail: "Office attendance will require company-network verification."
   },
   remote: {
     icon: "🏠",
     label: "Remote",
-    detail: "Remote attendance is authorized today"
+    detail: "Your HRMS schedule marks today as remote work."
   },
   externalSite: {
     icon: "📍",
     label: "External site",
-    detail: "External attendance is authorized today"
+    detail: "Your HRMS schedule marks today as external-site work."
+  },
+  leave: {
+    icon: "🌴",
+    label: "Leave",
+    detail: "You are on approved leave today."
+  },
+  notScheduled: {
+    icon: "—",
+    label: "Not scheduled",
+    detail: "No working schedule is assigned for today."
   }
 };
 
+function ensureEmployeeMobileAccess(user: CurrentUser) {
+  if (user.must_change_password) {
+    throw new Error("Complete your first password setup in the HRMS web app before using mobile attendance.");
+  }
+  if (user.employee_id === null || !user.permissions.includes("self.read")) {
+    throw new Error("This mobile app is available only to active employee accounts.");
+  }
+}
+
+function displayError(error: unknown) {
+  if (error instanceof HrmsApiError) {
+    if (error.status === 401) return "Invalid e-mail or password.";
+    if (error.status === 403) return error.message;
+    return `HRMS connection failed: ${error.message}`;
+  }
+  return error instanceof Error ? error.message : "Something went wrong. Please try again.";
+}
+
 export default function App() {
-  const [signedIn, setSignedIn] = useState(false);
+  const [booting, setBooting] = useState(true);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
   const [email, setEmail] = useState("sofiene.zayati@geniuspmo.com");
   const [password, setPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<Tab>("today");
-  const [data, setData] = useState<MobileTodayResponse>(demoToday);
+  const [data, setData] = useState<MobileTodayResponse | null>(null);
 
-  if (!signedIn) {
+  useEffect(() => {
+    void restoreSession();
+  }, []);
+
+  async function restoreSession() {
+    try {
+      const storedToken = await sessionStore.getAccessToken();
+      if (!storedToken) return;
+      const user = await hrmsApi.me(storedToken);
+      ensureEmployeeMobileAccess(user);
+      const today = await hrmsApi.today(storedToken);
+      setAccessToken(storedToken);
+      setData(today);
+    } catch (error) {
+      await sessionStore.clearAccessToken();
+      setLoginError(
+        error instanceof HrmsApiError && error.status === 401
+          ? "Your saved session expired. Sign in again."
+          : displayError(error)
+      );
+    } finally {
+      setBooting(false);
+    }
+  }
+
+  async function signIn() {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail || !password) {
+      setLoginError("Enter your work e-mail and password.");
+      return;
+    }
+
+    setLoginLoading(true);
+    setLoginError("");
+    try {
+      const result = await hrmsApi.login(normalizedEmail, password);
+      ensureEmployeeMobileAccess(result.user);
+      const today = await hrmsApi.today(result.access_token);
+      await sessionStore.setAccessToken(result.access_token);
+      setAccessToken(result.access_token);
+      setData(today);
+      setPassword("");
+    } catch (error) {
+      setLoginError(displayError(error));
+    } finally {
+      setLoginLoading(false);
+    }
+  }
+
+  async function refreshToday() {
+    if (!accessToken) return;
+    setRefreshing(true);
+    try {
+      setData(await hrmsApi.today(accessToken));
+    } catch (error) {
+      if (error instanceof HrmsApiError && error.status === 401) {
+        await signOut();
+        setLoginError("Your session expired. Sign in again.");
+      }
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  async function signOut() {
+    await sessionStore.clearAccessToken();
+    setAccessToken(null);
+    setData(null);
+    setTab("today");
+  }
+
+  if (booting) {
     return (
       <SafeAreaView style={styles.safeArea}>
         <StatusBar barStyle="dark-content" />
-        <View style={styles.loginPage}>
+        <View style={styles.loadingPage}>
+          <ActivityIndicator size="large" color={colors.navy} />
+          <Text style={styles.loadingText}>Connecting to HRMS…</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!accessToken || !data) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar barStyle="dark-content" />
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.loginPage}
+        >
           <View style={styles.brandMark}><Text style={styles.brandMarkText}>G</Text></View>
           <Text style={styles.loginEyebrow}>GENIUS PMO</Text>
           <Text style={styles.loginTitle}>Attendance</Text>
-          <Text style={styles.loginSubtitle}>
-            Sign in with your existing HRMS employee account.
-          </Text>
+          <Text style={styles.loginSubtitle}>Sign in with your existing HRMS employee account.</Text>
 
           <View style={styles.loginCard}>
-            <Field label="Work email" value={email} onChangeText={setEmail} autoCapitalize="none" />
-            <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry />
+            <Field
+              label="Work email"
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              editable={!loginLoading}
+            />
+            <Field
+              label="Password"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              editable={!loginLoading}
+              onSubmitEditing={() => void signIn()}
+            />
+            {loginError ? <Text style={styles.errorText}>{loginError}</Text> : null}
             <Pressable
               accessibilityRole="button"
-              onPress={() => setSignedIn(true)}
-              style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
+              disabled={loginLoading}
+              onPress={() => void signIn()}
+              style={({ pressed }) => [
+                styles.primaryButton,
+                loginLoading && styles.disabledButton,
+                pressed && !loginLoading && styles.pressed
+              ]}
             >
-              <Text style={styles.primaryButtonText}>Sign in</Text>
+              {loginLoading ? (
+                <ActivityIndicator color="white" />
+              ) : (
+                <Text style={styles.primaryButtonText}>Sign in</Text>
+              )}
             </Pressable>
-            <Text style={styles.prototypeNote}>
-              UI prototype: authentication will be connected to the HRMS mobile API next.
-            </Text>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
@@ -80,14 +222,16 @@ export default function App() {
             <Text style={styles.topEyebrow}>GENIUS PMO</Text>
             <Text style={styles.topTitle}>Attendance</Text>
           </View>
-          <View style={styles.avatar}><Text style={styles.avatarText}>SZ</Text></View>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{initialsFor(data.employee.name)}</Text>
+          </View>
         </View>
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           {tab === "today" ? (
-            <TodayScreen data={data} onChange={setData} />
+            <TodayScreen data={data} refreshing={refreshing} onRefresh={() => void refreshToday()} />
           ) : (
-            <ProfileScreen data={data} onSignOut={() => setSignedIn(false)} />
+            <ProfileScreen data={data} onSignOut={() => void signOut()} />
           )}
         </ScrollView>
 
@@ -102,62 +246,36 @@ export default function App() {
 
 function TodayScreen({
   data,
-  onChange
+  refreshing,
+  onRefresh
 }: {
   data: MobileTodayResponse;
-  onChange: (next: MobileTodayResponse) => void;
+  refreshing: boolean;
+  onRefresh: () => void;
 }) {
   const attendance = data.attendance;
   const mode = workModeCopy[attendance.workMode];
-  const action = attendance.state === "notCheckedIn" ? "Check in" : "Check out";
-  const actionEnabled = attendance.state === "notCheckedIn"
-    ? attendance.canCheckIn
-    : attendance.state === "working" && attendance.canCheckOut;
-
   const status = useMemo(() => {
     if (attendance.state === "working") return { label: "Working", tone: "success" as const };
     if (attendance.state === "completed") return { label: "Completed", tone: "success" as const };
+    if (attendance.workMode === "leave") return { label: "On leave", tone: "muted" as const };
+    if (attendance.workMode === "notScheduled") return { label: "Not scheduled", tone: "muted" as const };
     return { label: "Not checked in", tone: "muted" as const };
-  }, [attendance.state]);
-
-  function simulateAttendanceAction() {
-    if (!actionEnabled) return;
-    const now = new Date();
-    const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-
-    if (attendance.state === "notCheckedIn") {
-      onChange({
-        ...data,
-        attendance: {
-          ...attendance,
-          state: "working",
-          checkIn: time,
-          canCheckIn: false,
-          canCheckOut: true
-        }
-      });
-      return;
-    }
-
-    onChange({
-      ...data,
-      attendance: {
-        ...attendance,
-        state: "completed",
-        checkOut: time,
-        canCheckOut: false
-      }
-    });
-  }
+  }, [attendance.state, attendance.workMode]);
 
   return (
     <>
       <View style={styles.welcomeRow}>
-        <View style={styles.profileMiniAvatar}><Text style={styles.profileMiniAvatarText}>SZ</Text></View>
+        <View style={styles.profileMiniAvatar}>
+          <Text style={styles.profileMiniAvatarText}>{initialsFor(data.employee.name)}</Text>
+        </View>
         <View style={styles.flexOne}>
           <Text style={styles.hello}>Hello, {data.employee.name.split(" ")[0]}</Text>
           <Text style={styles.employeeLine}>{data.employee.position} · {data.employee.department}</Text>
         </View>
+        <Pressable onPress={onRefresh} disabled={refreshing} style={styles.refreshButton}>
+          {refreshing ? <ActivityIndicator size="small" color={colors.blue} /> : <Text style={styles.refreshText}>Refresh</Text>}
+        </Pressable>
       </View>
 
       <View style={styles.card}>
@@ -189,34 +307,11 @@ function TodayScreen({
           <TimeBox label="Check out" value={attendance.checkOut ?? "--:--"} />
         </View>
 
-        {attendance.workMode === "office" && (
-          <View style={attendance.officeNetworkVerified ? styles.networkGood : styles.networkWarning}>
-            <Text style={attendance.officeNetworkVerified ? styles.networkGoodText : styles.networkWarningText}>
-              {attendance.officeNetworkVerified
-                ? "● Company network verified"
-                : "○ Connect to the company network to record office attendance"}
-            </Text>
-          </View>
-        )}
-
-        <Pressable
-          accessibilityRole="button"
-          disabled={!actionEnabled}
-          onPress={simulateAttendanceAction}
-          style={({ pressed }) => [
-            styles.attendanceButton,
-            !actionEnabled && styles.disabledButton,
-            pressed && actionEnabled && styles.pressed
-          ]}
-        >
-          <Text style={styles.attendanceButtonText}>
-            {attendance.state === "completed" ? "Attendance completed" : action}
+        <View style={styles.integrationNotice}>
+          <Text style={styles.integrationNoticeText}>
+            Your profile, schedule and attendance status are now loaded from HRMS. Check-in/out submission is the next integration step.
           </Text>
-        </Pressable>
-
-        <Text style={styles.prototypeNote}>
-          Prototype button only. The production action will be authorized by the HRMS backend and office gateway rules.
-        </Text>
+        </View>
       </View>
     </>
   );
@@ -227,7 +322,9 @@ function ProfileScreen({ data, onSignOut }: { data: MobileTodayResponse; onSignO
   return (
     <>
       <View style={styles.profileHero}>
-        <View style={styles.profileAvatar}><Text style={styles.profileAvatarText}>SZ</Text></View>
+        <View style={styles.profileAvatar}>
+          <Text style={styles.profileAvatarText}>{initialsFor(employee.name)}</Text>
+        </View>
         <Text style={styles.profileName}>{employee.name}</Text>
         <Text style={styles.employeeNumber}>{employee.employeeNo}</Text>
         <Text style={styles.profileRole}>{employee.position}</Text>
@@ -295,6 +392,15 @@ function Detail({ label, value, last = false }: { label: string; value: string; 
   );
 }
 
+function initialsFor(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
 function formatDate(value: string) {
   const date = new Date(`${value}T12:00:00`);
   return new Intl.DateTimeFormat("en", {
@@ -307,6 +413,8 @@ function formatDate(value: string) {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.workspace },
   appShell: { flex: 1, backgroundColor: colors.workspace },
+  loadingPage: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
+  loadingText: { color: colors.muted, fontSize: 13 },
   loginPage: { flex: 1, justifyContent: "center", padding: 24, backgroundColor: colors.workspace },
   brandMark: { width: 54, height: 54, borderRadius: 17, backgroundColor: colors.navy, alignItems: "center", justifyContent: "center", marginBottom: 18 },
   brandMarkText: { color: "white", fontSize: 26, fontWeight: "800" },
@@ -317,10 +425,11 @@ const styles = StyleSheet.create({
   fieldWrap: { gap: 7, marginBottom: 14 },
   fieldLabel: { color: colors.text, fontSize: 12, fontWeight: "700" },
   input: { minHeight: 48, borderWidth: 1, borderColor: colors.line, borderRadius: 14, paddingHorizontal: 14, color: colors.ink, backgroundColor: "#FBFCFE" },
+  errorText: { color: colors.danger, fontSize: 11, lineHeight: 16, marginBottom: 10 },
   primaryButton: { minHeight: 50, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: colors.navy, marginTop: 4 },
   primaryButtonText: { color: "white", fontWeight: "800", fontSize: 14 },
+  disabledButton: { opacity: 0.6 },
   pressed: { opacity: 0.86 },
-  prototypeNote: { color: colors.muted, fontSize: 10, lineHeight: 15, textAlign: "center", marginTop: 12 },
   topBar: { minHeight: 72, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 18, borderBottomWidth: 1, borderBottomColor: colors.line, backgroundColor: colors.surface },
   topEyebrow: { color: colors.blue, fontSize: 9, fontWeight: "800", letterSpacing: 1.2 },
   topTitle: { color: colors.ink, fontSize: 17, fontWeight: "800", marginTop: 2 },
@@ -333,6 +442,8 @@ const styles = StyleSheet.create({
   flexOne: { flex: 1 },
   hello: { color: colors.ink, fontSize: 20, fontWeight: "800" },
   employeeLine: { color: colors.muted, fontSize: 12, marginTop: 3 },
+  refreshButton: { minWidth: 60, minHeight: 34, alignItems: "center", justifyContent: "center", paddingHorizontal: 8 },
+  refreshText: { color: colors.blue, fontSize: 11, fontWeight: "800" },
   card: { backgroundColor: colors.surface, borderRadius: 22, padding: 18, borderWidth: 1, borderColor: colors.line },
   cardEyebrow: { color: colors.blue, fontSize: 9, fontWeight: "800", letterSpacing: 1.2 },
   dateTitle: { color: colors.ink, fontSize: 23, fontWeight: "800", marginTop: 5 },
@@ -344,36 +455,31 @@ const styles = StyleSheet.create({
   modeDetail: { color: colors.muted, fontSize: 11, lineHeight: 17, marginTop: 14 },
   attendanceCard: { paddingBottom: 16 },
   cardHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 },
-  cardTitle: { color: colors.ink, fontSize: 20, fontWeight: "800", marginTop: 5 },
-  statusSuccess: { backgroundColor: colors.successSoft, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999 },
+  cardTitle: { color: colors.ink, fontSize: 19, fontWeight: "800", marginTop: 4 },
+  statusSuccess: { backgroundColor: colors.successSoft, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 7 },
   statusSuccessText: { color: colors.success, fontSize: 10, fontWeight: "800" },
-  statusMuted: { backgroundColor: "#F1F5F9", paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999 },
+  statusMuted: { backgroundColor: colors.workspace, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 7 },
   statusMutedText: { color: colors.muted, fontSize: 10, fontWeight: "800" },
   timeGrid: { flexDirection: "row", gap: 10, marginTop: 20 },
-  timeBox: { flex: 1, borderRadius: 16, padding: 14, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: colors.line },
-  timeValue: { color: colors.ink, fontSize: 22, fontWeight: "800", marginTop: 5 },
-  networkWarning: { borderRadius: 13, backgroundColor: colors.warningSoft, padding: 11, marginTop: 12 },
-  networkWarningText: { color: colors.warning, fontSize: 11, fontWeight: "700", lineHeight: 17 },
-  networkGood: { borderRadius: 13, backgroundColor: colors.successSoft, padding: 11, marginTop: 12 },
-  networkGoodText: { color: colors.success, fontSize: 11, fontWeight: "700" },
-  attendanceButton: { minHeight: 54, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: colors.blue, marginTop: 14 },
-  attendanceButtonText: { color: "white", fontSize: 15, fontWeight: "800" },
-  disabledButton: { backgroundColor: "#94A3B8" },
-  profileHero: { alignItems: "center", paddingVertical: 14 },
-  profileAvatar: { width: 88, height: 88, borderRadius: 28, backgroundColor: colors.navy, alignItems: "center", justifyContent: "center", marginBottom: 12 },
-  profileAvatarText: { color: "white", fontSize: 25, fontWeight: "800" },
-  profileName: { color: colors.ink, fontSize: 24, fontWeight: "800" },
-  employeeNumber: { color: colors.blue, fontSize: 11, fontWeight: "800", marginTop: 4 },
-  profileRole: { color: colors.muted, fontSize: 13, marginTop: 6 },
-  detailRow: { paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: colors.line },
+  timeBox: { flex: 1, backgroundColor: colors.workspace, borderRadius: 16, padding: 14 },
+  timeValue: { color: colors.ink, fontSize: 21, fontWeight: "800", marginTop: 4 },
+  integrationNotice: { marginTop: 14, borderRadius: 14, padding: 12, backgroundColor: colors.blueSoft },
+  integrationNoticeText: { color: colors.blue, fontSize: 10, lineHeight: 15, fontWeight: "600" },
+  profileHero: { alignItems: "center", paddingVertical: 16 },
+  profileAvatar: { width: 78, height: 78, borderRadius: 26, backgroundColor: colors.navy, alignItems: "center", justifyContent: "center" },
+  profileAvatarText: { color: "white", fontSize: 24, fontWeight: "800" },
+  profileName: { color: colors.ink, fontSize: 24, fontWeight: "800", marginTop: 12 },
+  employeeNumber: { color: colors.blue, fontSize: 11, fontWeight: "800", marginTop: 3 },
+  profileRole: { color: colors.muted, fontSize: 12, marginTop: 5 },
+  detailRow: { flexDirection: "row", justifyContent: "space-between", gap: 20, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: colors.line },
   detailRowLast: { borderBottomWidth: 0, paddingBottom: 0 },
-  detailLabel: { color: colors.muted, fontSize: 10, fontWeight: "700" },
-  detailValue: { color: colors.ink, fontSize: 13, fontWeight: "700", marginTop: 4 },
-  secondaryButton: { minHeight: 48, borderRadius: 14, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface },
-  secondaryButtonText: { color: colors.danger, fontSize: 13, fontWeight: "800" },
-  tabBar: { flexDirection: "row", gap: 8, padding: 10, borderTopWidth: 1, borderTopColor: colors.line, backgroundColor: colors.surface },
-  tabButton: { flex: 1, minHeight: 44, borderRadius: 13, alignItems: "center", justifyContent: "center" },
+  detailLabel: { color: colors.muted, fontSize: 11, flex: 1 },
+  detailValue: { color: colors.text, fontSize: 11, fontWeight: "700", flex: 1.5, textAlign: "right" },
+  secondaryButton: { minHeight: 48, borderRadius: 14, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
+  secondaryButtonText: { color: colors.danger, fontSize: 12, fontWeight: "800" },
+  tabBar: { flexDirection: "row", padding: 10, gap: 8, borderTopWidth: 1, borderTopColor: colors.line, backgroundColor: colors.surface },
+  tabButton: { flex: 1, minHeight: 42, borderRadius: 13, alignItems: "center", justifyContent: "center" },
   tabButtonActive: { backgroundColor: colors.blueSoft },
-  tabText: { color: colors.muted, fontWeight: "700", fontSize: 12 },
-  tabTextActive: { color: colors.blue, fontWeight: "800" }
+  tabText: { color: colors.muted, fontSize: 11, fontWeight: "800" },
+  tabTextActive: { color: colors.blue }
 });
