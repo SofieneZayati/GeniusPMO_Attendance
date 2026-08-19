@@ -1,4 +1,4 @@
-export type WorkMode = "office" | "remote" | "externalSite";
+export type WorkMode = "office" | "remote" | "externalSite" | "leave" | "notScheduled";
 export type AttendanceState = "notCheckedIn" | "working" | "completed";
 
 export type EmployeeProfile = {
@@ -20,8 +20,8 @@ export type TodayAttendance = {
   start: string;
   end: string;
   workMode: WorkMode;
-  locationLabel?: string;
   state: AttendanceState;
+  status: string;
   checkIn?: string;
   checkOut?: string;
   officeNetworkVerified: boolean;
@@ -32,4 +32,47 @@ export type TodayAttendance = {
 export type MobileTodayResponse = {
   employee: EmployeeProfile;
   attendance: TodayAttendance;
+};
+
+export type CurrentUser = {
+  id: number;
+  email: string;
+  is_active: boolean;
+  must_change_password: boolean;
+  employee_id: number | null;
+  permissions: string[];
+};
+
+export type MobileLoginResponse = {
+  access_token: string;
+  token_type: "bearer";
+  expires_in: number;
+  user: CurrentUser;
+};
+
+export type SelfServiceProfileResponse = {
+  id: number;
+  employee_no: string;
+  name: string;
+  initials: string;
+  email: string;
+  phone: string;
+  job_title: string;
+  department: string;
+  primary_team: string;
+  manager: string;
+  start_date: string;
+  contract_type: string;
+};
+
+export type AttendanceReadinessResponse = {
+  work_date: string;
+  scheduled: boolean;
+  schedule_start: string | null;
+  schedule_end: string | null;
+  work_mode: WorkMode;
+  status: string;
+  entry_time: string | null;
+  exit_time: string | null;
+  next_action: "check_in" | "check_out" | null;
 };

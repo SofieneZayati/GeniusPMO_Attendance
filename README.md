@@ -4,58 +4,52 @@ Lightweight mobile attendance companion for the Genius PMO HRMS.
 
 ## Scope
 
-The app is intentionally small. Employees sign in with their existing HRMS account, see basic work-profile details and today's schedule, then check in or out according to the work assignment already approved in HRMS.
+Employees sign in with their existing HRMS account, see their basic work profile and today's schedule/attendance status, and will record attendance according to the work mode already approved in HRMS.
 
-It does **not** contain HR, payroll, admin, project-management, documents, or other web-HRMS features.
+The app intentionally does **not** duplicate HR, payroll, admin, projects, documents, or other web-HRMS features.
 
 ## Architecture
 
 - Mobile client: this repository (Expo + React Native + TypeScript)
-- Backend/API: existing `GeniusPMO_HRMS` FastAPI service
+- Authentication/API: existing `GeniusPMO_HRMS` FastAPI service
 - Database: existing HRMS PostgreSQL database
-- Office attendance proof: future office-only LAN gateway
+- Session storage: encrypted device storage through Expo SecureStore
+- Office attendance proof: company-LAN verification will be added in the attendance-write phase
 
-See `docs/ARCHITECTURE.md` for the rules.
+The mobile app never connects directly to PostgreSQL and never decides its own work mode. HRMS remains the source of truth.
 
-## Initial prototype
+## Current status
 
-The current starter includes:
+The mobile client now supports:
 
-- sign-in screen shell
-- Today screen with schedule/work mode
-- Check In / Check Out interaction prototype
-- Profile screen with basic employee details
-- typed HRMS API client boundary
-- environment variable for the public HRMS API
+- real HRMS employee login through a bearer session token
+- secure local session persistence
+- automatic session restoration
+- real employee profile data
+- real company-date schedule/work-mode state
+- real current attendance status
+- sign out and manual refresh
 
-The displayed employee data and button state are temporary UI demo data. They will be removed when mobile endpoints are implemented in the HRMS backend.
+Check-in/check-out submission is intentionally not enabled yet. The next phase will add remote/external attendance writes and company-LAN verification for office attendance.
 
-## Run locally
+## Local phone testing
 
-Copy the environment file:
-
-```bash
-cp .env.example .env
-```
-
-Install dependencies:
+1. Run the HRMS backend on the development PC.
+2. Find the PC's LAN IPv4 address with `ipconfig` on Windows.
+3. Copy `.env.example` to `.env` and replace `YOUR_PC_IP` with that IPv4 address.
+4. Install dependencies and start Expo:
 
 ```bash
 npm install
-```
-
-Start Expo:
-
-```bash
 npm start
 ```
 
-During the current Expo SDK transition, the project targets SDK 54 so it can be tested conveniently with Expo Go on physical phones.
+5. Open the project in Expo Go while the phone and PC are on the same Wi-Fi.
 
-## Security rules
+Example local API value:
 
-- The app never connects directly to PostgreSQL.
-- The backend decides today's work mode and whether attendance is allowed.
-- Office attendance must be proven through the private office LAN path.
-- Remote/external attendance is only accepted when HRMS says the employee is assigned to that mode for the day.
-- No phone biometric hardware is required.
+```env
+EXPO_PUBLIC_API_BASE_URL=http://192.168.1.25:8000/api/v1
+```
+
+The HRMS backend must include the mobile authentication endpoint from its mobile-auth integration before real login can succeed.
