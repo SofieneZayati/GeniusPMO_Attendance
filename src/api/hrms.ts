@@ -116,6 +116,8 @@ async function cacheProfilePhoto(profile: SelfServiceProfileResponse, accessToke
     return;
   }
 
+  if (cachedProfilePhoto?.accessToken === accessToken) return;
+
   try {
     cachedProfilePhoto = {
       accessToken,
