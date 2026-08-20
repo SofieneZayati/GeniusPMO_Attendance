@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -12,6 +12,11 @@ import {
   TextInput,
   View
 } from "react-native";
+import {
+  SafeAreaProvider,
+  SafeAreaView,
+  useSafeAreaInsets
+} from "react-native-safe-area-context";
 import { HrmsApiError, hrmsApi } from "./src/api/hrms";
 import { sessionStore } from "./src/auth/session";
 import { colors } from "./src/theme";
@@ -66,6 +71,15 @@ function displayError(error: unknown) {
 }
 
 export default function App() {
+  return (
+    <SafeAreaProvider>
+      <AppContent />
+    </SafeAreaProvider>
+  );
+}
+
+function AppContent() {
+  const insets = useSafeAreaInsets();
   const [booting, setBooting] = useState(true);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [email, setEmail] = useState("sofiene.zayati@geniuspmo.com");
@@ -149,8 +163,8 @@ export default function App() {
 
   if (booting) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <StatusBar barStyle="dark-content" />
+      <SafeAreaView style={styles.safeArea} edges={["top", "right", "bottom", "left"]}>
+        <StatusBar barStyle="dark-content" backgroundColor={colors.workspace} />
         <View style={styles.loadingPage}>
           <ActivityIndicator size="large" color={colors.navy} />
           <Text style={styles.loadingText}>Connecting to HRMS…</Text>
@@ -161,65 +175,79 @@ export default function App() {
 
   if (!accessToken || !data) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <StatusBar barStyle="dark-content" />
+      <SafeAreaView style={styles.safeArea} edges={["top", "right", "bottom", "left"]}>
+        <StatusBar barStyle="dark-content" backgroundColor={colors.workspace} />
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={styles.loginPage}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={0}
+          style={styles.flexOne}
         >
-          <View style={styles.brandMark}><Text style={styles.brandMarkText}>G</Text></View>
-          <Text style={styles.loginEyebrow}>GENIUS PMO</Text>
-          <Text style={styles.loginTitle}>Attendance</Text>
-          <Text style={styles.loginSubtitle}>Sign in with your existing HRMS employee account.</Text>
+          <ScrollView
+            style={styles.loginScroll}
+            contentContainerStyle={styles.loginScrollContent}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.loginBody}>
+              <BrandLockup />
+              <Text style={styles.loginTitle}>Attendance</Text>
+              <Text style={styles.loginSubtitle}>
+                Sign in with your existing HRMS employee account.
+              </Text>
 
-          <View style={styles.loginCard}>
-            <Field
-              label="Work email"
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="email-address"
-              editable={!loginLoading}
-            />
-            <Field
-              label="Password"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              editable={!loginLoading}
-              onSubmitEditing={() => void signIn()}
-            />
-            {loginError ? <Text style={styles.errorText}>{loginError}</Text> : null}
-            <Pressable
-              accessibilityRole="button"
-              disabled={loginLoading}
-              onPress={() => void signIn()}
-              style={({ pressed }) => [
-                styles.primaryButton,
-                loginLoading && styles.disabledButton,
-                pressed && !loginLoading && styles.pressed
-              ]}
-            >
-              {loginLoading ? (
-                <ActivityIndicator color="white" />
-              ) : (
-                <Text style={styles.primaryButtonText}>Sign in</Text>
-              )}
-            </Pressable>
-          </View>
+              <View style={styles.loginCard}>
+                <Field
+                  label="Work email"
+                  value={email}
+                  onChangeText={setEmail}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="email-address"
+                  editable={!loginLoading}
+                  returnKeyType="next"
+                />
+                <Field
+                  label="Password"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry
+                  editable={!loginLoading}
+                  returnKeyType="go"
+                  onSubmitEditing={() => void signIn()}
+                />
+                {loginError ? <Text style={styles.errorText}>{loginError}</Text> : null}
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={loginLoading}
+                  onPress={() => void signIn()}
+                  style={({ pressed }) => [
+                    styles.primaryButton,
+                    loginLoading && styles.disabledButton,
+                    pressed && !loginLoading && styles.pressed
+                  ]}
+                >
+                  {loginLoading ? (
+                    <ActivityIndicator color="white" />
+                  ) : (
+                    <Text style={styles.primaryButtonText}>Sign in</Text>
+                  )}
+                </Pressable>
+              </View>
+            </View>
+          </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" />
+    <SafeAreaView style={styles.safeArea} edges={["top", "right", "left"]}>
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
       <View style={styles.appShell}>
         <View style={styles.topBar}>
-          <View>
-            <Text style={styles.topEyebrow}>GENIUS PMO</Text>
+          <View style={styles.topBrandBlock}>
+            <BrandLockup compact />
             <Text style={styles.topTitle}>Attendance</Text>
           </View>
           <View style={styles.avatar}>
@@ -227,7 +255,10 @@ export default function App() {
           </View>
         </View>
 
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+        >
           {tab === "today" ? (
             <TodayScreen data={data} refreshing={refreshing} onRefresh={() => void refreshToday()} />
           ) : (
@@ -235,12 +266,34 @@ export default function App() {
           )}
         </ScrollView>
 
-        <View style={styles.tabBar}>
+        <View
+          style={[
+            styles.tabBar,
+            {
+              minHeight: 62 + insets.bottom,
+              paddingBottom: Math.max(insets.bottom, 10)
+            }
+          ]}
+        >
           <TabButton label="Today" active={tab === "today"} onPress={() => setTab("today")} />
           <TabButton label="Profile" active={tab === "profile"} onPress={() => setTab("profile")} />
         </View>
       </View>
     </SafeAreaView>
+  );
+}
+
+function BrandLockup({ compact = false }: { compact?: boolean }) {
+  return (
+    <View style={[styles.brandLockup, compact && styles.brandLockupCompact]}>
+      <Image
+        accessibilityLabel="Genius PMO logo"
+        source={require("./assets/genius-mark.png")}
+        resizeMode="contain"
+        style={compact ? styles.brandLogoCompact : styles.brandLogo}
+      />
+      <Text style={compact ? styles.brandNameCompact : styles.brandName}>GENIUS PMO</Text>
+    </View>
   );
 }
 
@@ -274,7 +327,11 @@ function TodayScreen({
           <Text style={styles.employeeLine}>{data.employee.position} · {data.employee.department}</Text>
         </View>
         <Pressable onPress={onRefresh} disabled={refreshing} style={styles.refreshButton}>
-          {refreshing ? <ActivityIndicator size="small" color={colors.blue} /> : <Text style={styles.refreshText}>Refresh</Text>}
+          {refreshing ? (
+            <ActivityIndicator size="small" color={colors.blue} />
+          ) : (
+            <Text style={styles.refreshText}>Refresh</Text>
+          )}
         </Pressable>
       </View>
 
@@ -411,35 +468,40 @@ function formatDate(value: string) {
 }
 
 const styles = StyleSheet.create({
+  flexOne: { flex: 1 },
   safeArea: { flex: 1, backgroundColor: colors.workspace },
   appShell: { flex: 1, backgroundColor: colors.workspace },
   loadingPage: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
   loadingText: { color: colors.muted, fontSize: 13 },
-  loginPage: { flex: 1, justifyContent: "center", padding: 24, backgroundColor: colors.workspace },
-  brandMark: { width: 54, height: 54, borderRadius: 17, backgroundColor: colors.navy, alignItems: "center", justifyContent: "center", marginBottom: 18 },
-  brandMarkText: { color: "white", fontSize: 26, fontWeight: "800" },
-  loginEyebrow: { color: colors.blue, fontSize: 11, fontWeight: "800", letterSpacing: 1.5 },
-  loginTitle: { color: colors.ink, fontSize: 36, fontWeight: "800", marginTop: 4 },
+  loginScroll: { flex: 1, backgroundColor: colors.workspace },
+  loginScrollContent: { flexGrow: 1, justifyContent: "center", paddingHorizontal: 24, paddingVertical: 28 },
+  loginBody: { width: "100%", maxWidth: 560, alignSelf: "center" },
+  brandLockup: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 18 },
+  brandLockupCompact: { gap: 8, marginBottom: 0 },
+  brandLogo: { width: 54, height: 54 },
+  brandLogoCompact: { width: 30, height: 30 },
+  brandName: { color: colors.blue, fontSize: 13, fontWeight: "800", letterSpacing: 1.5 },
+  brandNameCompact: { color: colors.blue, fontSize: 10, fontWeight: "800", letterSpacing: 1.25 },
+  loginTitle: { color: colors.ink, fontSize: 36, fontWeight: "800" },
   loginSubtitle: { color: colors.muted, fontSize: 14, lineHeight: 21, marginTop: 8, marginBottom: 24 },
   loginCard: { backgroundColor: colors.surface, borderRadius: 24, padding: 18, borderWidth: 1, borderColor: colors.line },
   fieldWrap: { gap: 7, marginBottom: 14 },
   fieldLabel: { color: colors.text, fontSize: 12, fontWeight: "700" },
-  input: { minHeight: 48, borderWidth: 1, borderColor: colors.line, borderRadius: 14, paddingHorizontal: 14, color: colors.ink, backgroundColor: "#FBFCFE" },
+  input: { minHeight: 50, borderWidth: 1, borderColor: colors.line, borderRadius: 14, paddingHorizontal: 14, color: colors.ink, backgroundColor: "#FBFCFE" },
   errorText: { color: colors.danger, fontSize: 11, lineHeight: 16, marginBottom: 10 },
   primaryButton: { minHeight: 50, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: colors.navy, marginTop: 4 },
   primaryButtonText: { color: "white", fontWeight: "800", fontSize: 14 },
   disabledButton: { opacity: 0.6 },
   pressed: { opacity: 0.86 },
-  topBar: { minHeight: 72, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 18, borderBottomWidth: 1, borderBottomColor: colors.line, backgroundColor: colors.surface },
-  topEyebrow: { color: colors.blue, fontSize: 9, fontWeight: "800", letterSpacing: 1.2 },
-  topTitle: { color: colors.ink, fontSize: 17, fontWeight: "800", marginTop: 2 },
+  topBar: { minHeight: 76, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 18, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.line, backgroundColor: colors.surface },
+  topBrandBlock: { justifyContent: "center" },
+  topTitle: { color: colors.ink, fontSize: 17, fontWeight: "800", marginTop: 3 },
   avatar: { width: 38, height: 38, borderRadius: 13, backgroundColor: colors.blueSoft, alignItems: "center", justifyContent: "center" },
   avatarText: { color: colors.blue, fontSize: 12, fontWeight: "800" },
   content: { padding: 16, paddingBottom: 28, gap: 14 },
   welcomeRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 4 },
   profileMiniAvatar: { width: 48, height: 48, borderRadius: 16, backgroundColor: colors.navy, alignItems: "center", justifyContent: "center" },
   profileMiniAvatarText: { color: "white", fontWeight: "800" },
-  flexOne: { flex: 1 },
   hello: { color: colors.ink, fontSize: 20, fontWeight: "800" },
   employeeLine: { color: colors.muted, fontSize: 12, marginTop: 3 },
   refreshButton: { minWidth: 60, minHeight: 34, alignItems: "center", justifyContent: "center", paddingHorizontal: 8 },
@@ -477,7 +539,7 @@ const styles = StyleSheet.create({
   detailValue: { color: colors.text, fontSize: 11, fontWeight: "700", flex: 1.5, textAlign: "right" },
   secondaryButton: { minHeight: 48, borderRadius: 14, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
   secondaryButtonText: { color: colors.danger, fontSize: 12, fontWeight: "800" },
-  tabBar: { flexDirection: "row", padding: 10, gap: 8, borderTopWidth: 1, borderTopColor: colors.line, backgroundColor: colors.surface },
+  tabBar: { flexDirection: "row", paddingHorizontal: 10, paddingTop: 10, gap: 8, borderTopWidth: 1, borderTopColor: colors.line, backgroundColor: colors.surface },
   tabButton: { flex: 1, minHeight: 42, borderRadius: 13, alignItems: "center", justifyContent: "center" },
   tabButtonActive: { backgroundColor: colors.blueSoft },
   tabText: { color: colors.muted, fontSize: 11, fontWeight: "800" },
