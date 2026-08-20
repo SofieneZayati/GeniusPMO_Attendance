@@ -1,4 +1,4 @@
-import { resolveApiEndpoint } from "../config/api-endpoint";
+import { invalidateApiEndpoint, resolveApiEndpoint } from "../config/api-endpoint";
 import type {
   AttendanceReadinessResponse,
   CurrentUser,
@@ -50,6 +50,20 @@ function responseErrorMessage(status: number, rawBody: string) {
   return fallback;
 }
 
+async function fetchHrms(path: string, init?: RequestInit) {
+  const endpoint = await resolveApiEndpoint();
+
+  try {
+    return await fetch(`${endpoint.baseUrl}${path}`, init);
+  } catch (error) {
+    if (endpoint.source !== "lan-discovery") throw error;
+
+    await invalidateApiEndpoint();
+    const rediscovered = await resolveApiEndpoint();
+    return fetch(`${rediscovered.baseUrl}${path}`, init);
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit, accessToken?: string): Promise<T> {
   const headers: Record<string, string> = {
     Accept: "application/json",
@@ -60,8 +74,7 @@ async function request<T>(path: string, init?: RequestInit, accessToken?: string
     headers.Authorization = `Bearer ${accessToken}`;
   }
 
-  const { baseUrl } = resolveApiEndpoint();
-  const response = await fetch(`${baseUrl}${path}`, {
+  const response = await fetchHrms(path, {
     ...init,
     headers: {
       ...headers,
@@ -93,8 +106,7 @@ function blobToDataUri(blob: Blob): Promise<string> {
 }
 
 async function protectedImageDataUri(path: string, accessToken: string): Promise<string> {
-  const { baseUrl } = resolveApiEndpoint();
-  const response = await fetch(`${baseUrl}${path}`, {
+  const response = await fetchHrms(path, {
     headers: {
       Accept: "image/*",
       Authorization: `Bearer ${accessToken}`

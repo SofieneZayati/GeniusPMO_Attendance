@@ -3,6 +3,9 @@
     "preview": {
       "distribution": "internal",
       "environment": "preview",
+      "env": {
+        "EXPO_PUBLIC_ENABLE_LAN_DISCOVERY": "true"
+      },
       "android": {
         "buildType": "apk"
       }
