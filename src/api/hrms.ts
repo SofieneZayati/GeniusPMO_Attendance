@@ -11,6 +11,13 @@ import type {
 
 type AttendanceAction = "check_in" | "check_out";
 
+type CachedProfilePhoto = {
+  accessToken: string;
+  dataUri: string;
+};
+
+let cachedProfilePhoto: CachedProfilePhoto | null = null;
+
 export class HrmsApiError extends Error {
   constructor(
     message: string,
@@ -103,6 +110,25 @@ async function protectedImageDataUri(path: string, accessToken: string): Promise
   return blobToDataUri(await response.blob());
 }
 
+async function cacheProfilePhoto(profile: SelfServiceProfileResponse, accessToken: string) {
+  if (!profile.has_profile_photo) {
+    if (cachedProfilePhoto?.accessToken === accessToken) cachedProfilePhoto = null;
+    return;
+  }
+
+  try {
+    cachedProfilePhoto = {
+      accessToken,
+      dataUri: await protectedImageDataUri(
+        "/employee-self-service/profile-photo",
+        accessToken
+      )
+    };
+  } catch {
+    if (cachedProfilePhoto?.accessToken === accessToken) cachedProfilePhoto = null;
+  }
+}
+
 function mapToday(
   profile: SelfServiceProfileResponse,
   attendance: AttendanceReadinessResponse
@@ -159,8 +185,17 @@ export const hrmsApi = {
 
   me: (accessToken: string) => request<CurrentUser>("/auth/me", undefined, accessToken),
 
-  profilePhotoDataUri: (accessToken: string) =>
-    protectedImageDataUri("/employee-self-service/profile-photo", accessToken),
+  profilePhotoSource: (accessToken: string) => {
+    if (cachedProfilePhoto?.accessToken === accessToken) {
+      return { uri: cachedProfilePhoto.dataUri };
+    }
+
+    const { baseUrl } = resolveApiEndpoint();
+    return {
+      uri: `${baseUrl}/employee-self-service/profile-photo`,
+      headers: { Authorization: `Bearer ${accessToken}` }
+    };
+  },
 
   today: async (accessToken: string) => {
     const [profile, attendance] = await Promise.all([
@@ -176,6 +211,7 @@ export const hrmsApi = {
       )
     ]);
 
+    await cacheProfilePhoto(profile, accessToken);
     return mapToday(profile, attendance);
   },
 
