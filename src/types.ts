@@ -5,6 +5,7 @@ export type EmployeeProfile = {
   id: number;
   employeeNo: string;
   name: string;
+  hasProfilePhoto: boolean;
   email: string;
   phone: string;
   position: string;
@@ -27,6 +28,7 @@ export type TodayAttendance = {
   officeNetworkVerified: boolean;
   canCheckIn: boolean;
   canCheckOut: boolean;
+  developmentOfficeAction: boolean;
 };
 
 export type MobileTodayResponse = {
@@ -55,6 +57,7 @@ export type SelfServiceProfileResponse = {
   employee_no: string;
   name: string;
   initials: string;
+  has_profile_photo: boolean;
   email: string;
   phone: string;
   job_title: string;
@@ -66,6 +69,7 @@ export type SelfServiceProfileResponse = {
 };
 
 export type AttendanceReadinessResponse = {
+  simulator_enabled: boolean;
   work_date: string;
   scheduled: boolean;
   schedule_start: string | null;
@@ -75,4 +79,13 @@ export type AttendanceReadinessResponse = {
   entry_time: string | null;
   exit_time: string | null;
   next_action: "check_in" | "check_out" | null;
+  can_simulate_scan: boolean;
+};
+
+export type AttendanceSimulatorScanResponse = {
+  event_id: number;
+  event_type: "entry" | "exit";
+  event_time: string;
+  result: string;
+  state: AttendanceReadinessResponse;
 };
