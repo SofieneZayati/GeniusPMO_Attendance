@@ -1,3 +1,4 @@
+import { resolveApiEndpoint } from "../config/api-endpoint";
 import type {
   AttendanceReadinessResponse,
   CurrentUser,
@@ -5,8 +6,6 @@ import type {
   MobileTodayResponse,
   SelfServiceProfileResponse
 } from "../types";
-
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/$/, "");
 
 export class HrmsApiError extends Error {
   constructor(
@@ -16,13 +15,6 @@ export class HrmsApiError extends Error {
     super(message);
     this.name = "HrmsApiError";
   }
-}
-
-function requireApiBaseUrl() {
-  if (!API_BASE_URL) {
-    throw new Error("EXPO_PUBLIC_API_BASE_URL is not configured.");
-  }
-  return API_BASE_URL;
 }
 
 async function request<T>(path: string, init?: RequestInit, accessToken?: string): Promise<T> {
@@ -35,7 +27,8 @@ async function request<T>(path: string, init?: RequestInit, accessToken?: string
     headers.Authorization = `Bearer ${accessToken}`;
   }
 
-  const response = await fetch(`${requireApiBaseUrl()}${path}`, {
+  const { baseUrl } = resolveApiEndpoint();
+  const response = await fetch(`${baseUrl}${path}`, {
     ...init,
     headers: {
       ...headers,

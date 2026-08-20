@@ -18,9 +18,33 @@ The app intentionally does **not** duplicate HR, payroll, admin, projects, docum
 
 The mobile app never connects directly to PostgreSQL and never decides its own work mode. HRMS remains the source of truth.
 
+## API connection model
+
+### Development
+
+Local phone testing is zero-config in the normal setup. Expo exposes the development host address to the running app, so the mobile client derives the PC's LAN address automatically and connects to the HRMS backend on port `8000`.
+
+This means moving between home, office, or another Wi-Fi network does not require editing the PC IP in `.env`, as long as:
+
+- Expo and the HRMS backend are running on the same development PC
+- the phone opens the project from that Expo development server
+- the phone and PC can reach each other on the local network
+
+If the backend uses another port, set `EXPO_PUBLIC_DEV_API_PORT`. If Expo is using tunnel mode or the backend runs on another machine, `EXPO_PUBLIC_API_BASE_URL` remains available as an explicit fallback.
+
+### Production
+
+Production does not use LAN discovery for the main HRMS API. The release build is configured once with a permanent HTTPS endpoint such as:
+
+```env
+EXPO_PUBLIC_API_BASE_URL=https://api.geniuspmo.com/api/v1
+```
+
+Employees then use the same app configuration from any network. Office LAN discovery/proof is a separate attendance-security mechanism and will only be required for office check-in/out.
+
 ## Current status
 
-The mobile client now supports:
+The mobile client supports:
 
 - real HRMS employee login through a bearer session token
 - secure local session persistence
@@ -28,28 +52,24 @@ The mobile client now supports:
 - real employee profile data
 - real company-date schedule/work-mode state
 - real current attendance status
+- automatic local HRMS endpoint resolution during normal Expo development
 - sign out and manual refresh
 
-Check-in/check-out submission is intentionally not enabled yet. The next phase will add remote/external attendance writes and company-LAN verification for office attendance.
+Check-in/check-out submission is intentionally not enabled yet. The next phase will add remote/external attendance writes and trusted company-LAN verification for office attendance.
 
 ## Local phone testing
 
 1. Run the HRMS backend on the development PC.
-2. Find the PC's LAN IPv4 address with `ipconfig` on Windows.
-3. Copy `.env.example` to `.env` and replace `YOUR_PC_IP` with that IPv4 address.
-4. Install dependencies and start Expo:
+2. In this repository, install dependencies and start Expo:
 
 ```bash
 npm install
 npm start
 ```
 
-5. Open the project in Expo Go while the phone and PC are on the same Wi-Fi.
+3. Open the project in Expo Go while the phone and PC are on the same Wi-Fi.
+4. Sign in with a real HRMS employee account.
 
-Example local API value:
+You normally do **not** need to run `ipconfig` or edit an IP address when moving between networks.
 
-```env
-EXPO_PUBLIC_API_BASE_URL=http://192.168.1.25:8000/api/v1
-```
-
-The HRMS backend must include the mobile authentication endpoint from its mobile-auth integration before real login can succeed.
+If local discovery cannot work because the network isolates devices, use an explicit API URL or test against the deployed HTTPS HRMS server instead.
