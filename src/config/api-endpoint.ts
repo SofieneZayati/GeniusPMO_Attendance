@@ -53,6 +53,18 @@ function isDevelopmentLanHost(hostname: string) {
   return false;
 }
 
+export function isOfficeNetworkEndpoint(endpoint: ApiEndpoint) {
+  if (endpoint.source === "lan-discovery" || endpoint.source === "development-auto") {
+    return true;
+  }
+
+  try {
+    return isDevelopmentLanHost(new URL(endpoint.baseUrl).hostname);
+  } catch {
+    return false;
+  }
+}
+
 function developmentAutoBaseUrl() {
   if (!__DEV__) return null;
 

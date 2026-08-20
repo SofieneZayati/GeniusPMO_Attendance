@@ -1,4 +1,8 @@
-import { invalidateApiEndpoint, resolveApiEndpoint } from "../config/api-endpoint";
+import {
+  invalidateApiEndpoint,
+  isOfficeNetworkEndpoint,
+  resolveApiEndpoint
+} from "../config/api-endpoint";
 import type {
   AttendanceReadinessResponse,
   CurrentUser,
@@ -150,7 +154,8 @@ async function cacheProfilePhoto(
 function mapToday(
   profile: SelfServiceProfileResponse,
   attendance: AttendanceReadinessResponse,
-  protectedPhotoLoaded: boolean
+  protectedPhotoLoaded: boolean,
+  officeNetworkVerified: boolean
 ): MobileTodayResponse {
   const state = attendance.entry_time
     ? attendance.exit_time
@@ -158,7 +163,9 @@ function mapToday(
       : "working"
     : "notCheckedIn";
   const directMobileMode =
-    attendance.work_mode === "remote" || attendance.work_mode === "externalSite";
+    attendance.work_mode === "remote" ||
+    attendance.work_mode === "externalSite" ||
+    (attendance.work_mode === "office" && officeNetworkVerified);
 
   return {
     employee: {
@@ -184,7 +191,7 @@ function mapToday(
       status: attendance.status,
       checkIn: attendance.entry_time ?? undefined,
       checkOut: attendance.exit_time ?? undefined,
-      officeNetworkVerified: false,
+      officeNetworkVerified,
       canCheckIn: state === "notCheckedIn" && directMobileMode,
       canCheckOut: state === "working" && directMobileMode,
       developmentOfficeAction: false
@@ -206,6 +213,8 @@ export const hrmsApi = {
   }),
 
   today: async (accessToken: string) => {
+    const endpoint = await resolveApiEndpoint();
+    const officeNetworkVerified = isOfficeNetworkEndpoint(endpoint);
     const [profile, attendance] = await Promise.all([
       request<SelfServiceProfileResponse>(
         "/employee-self-service/profile",
@@ -220,7 +229,7 @@ export const hrmsApi = {
     ]);
 
     const protectedPhotoLoaded = await cacheProfilePhoto(profile, accessToken);
-    return mapToday(profile, attendance, protectedPhotoLoaded);
+    return mapToday(profile, attendance, protectedPhotoLoaded, officeNetworkVerified);
   },
 
   recordAttendance: async (
@@ -229,10 +238,13 @@ export const hrmsApi = {
     workMode: WorkMode
   ) => {
     if (workMode === "office") {
-      throw new HrmsApiError(
-        "Office attendance requires verified company-network access.",
-        403
-      );
+      const endpoint = await resolveApiEndpoint();
+      if (!isOfficeNetworkEndpoint(endpoint)) {
+        throw new HrmsApiError(
+          "Connect to the same local network as the HRMS server to record office attendance.",
+          403
+        );
+      }
     }
 
     const endpoint = action === "check_in" ? "check-in" : "check-out";
