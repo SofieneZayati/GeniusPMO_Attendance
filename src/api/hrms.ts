@@ -17,6 +17,29 @@ export class HrmsApiError extends Error {
   }
 }
 
+function responseErrorMessage(status: number, rawBody: string) {
+  const fallback = `HRMS request failed (${status}).`;
+  if (!rawBody.trim()) return fallback;
+
+  try {
+    const body = JSON.parse(rawBody) as {
+      detail?: unknown;
+      error?: { message?: unknown };
+    };
+    if (typeof body.detail === "string" && body.detail.trim()) return body.detail;
+    if (typeof body.error?.message === "string" && body.error.message.trim()) {
+      return body.error.message;
+    }
+  } catch {
+    if (status < 500) {
+      const text = rawBody.trim();
+      if (text.length <= 200) return text;
+    }
+  }
+
+  return fallback;
+}
+
 async function request<T>(path: string, init?: RequestInit, accessToken?: string): Promise<T> {
   const headers: Record<string, string> = {
     Accept: "application/json",
@@ -37,14 +60,8 @@ async function request<T>(path: string, init?: RequestInit, accessToken?: string
   });
 
   if (!response.ok) {
-    let message = `HRMS request failed (${response.status}).`;
-    try {
-      const body = (await response.json()) as { detail?: string };
-      if (body.detail) message = body.detail;
-    } catch {
-      // Keep the status-based fallback when the response is not JSON.
-    }
-    throw new HrmsApiError(message, response.status);
+    const rawBody = await response.text();
+    throw new HrmsApiError(responseErrorMessage(response.status, rawBody), response.status);
   }
 
   return response.json() as Promise<T>;
