@@ -79,7 +79,9 @@ function privateIpv4Prefix(ipAddress: string) {
     return null;
   }
 
-  const [first, second, third] = octets;
+  const first = octets[0]!;
+  const second = octets[1]!;
+  const third = octets[2]!;
   const isPrivate =
     first === 10 ||
     (first === 172 && second >= 16 && second <= 31) ||
