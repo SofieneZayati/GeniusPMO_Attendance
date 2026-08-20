@@ -11,6 +11,12 @@
     "ios": {
       "bundleIdentifier": "com.geniuspmo.attendance",
       "supportsTablet": false
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "8ee979f6-aa45-4e27-adcf-cb2ae4416834"
+      }
+    },
+    "owner": "sofienezayati"
   }
 }
