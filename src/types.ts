@@ -28,7 +28,6 @@ export type TodayAttendance = {
   officeNetworkVerified: boolean;
   canCheckIn: boolean;
   canCheckOut: boolean;
-  developmentOfficeAction: boolean;
 };
 
 export type MobileTodayResponse = {
@@ -78,4 +77,10 @@ export type AttendanceReadinessResponse = {
   entry_time: string | null;
   exit_time: string | null;
   next_action: "check_in" | "check_out" | null;
+};
+
+export type MobileAttendanceStateResponse = AttendanceReadinessResponse & {
+  office_network_verified: boolean;
+  can_check_in: boolean;
+  can_check_out: boolean;
 };

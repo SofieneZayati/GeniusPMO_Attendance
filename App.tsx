@@ -85,7 +85,7 @@ function AppContent() {
   const insets = useSafeAreaInsets();
   const [booting, setBooting] = useState(true);
   const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [email, setEmail] = useState("sofiene.zayati@geniuspmo.com");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
@@ -174,7 +174,7 @@ function AppContent() {
     setAttendanceLoading(true);
     setAttendanceError("");
     try {
-      await hrmsApi.recordAttendance(accessToken, action, data.attendance.workMode);
+      await hrmsApi.recordAttendance(accessToken, action);
       setData(await hrmsApi.today(accessToken));
     } catch (error) {
       if (error instanceof HrmsApiError && error.status === 401) {
@@ -328,7 +328,7 @@ function AppContent() {
 function BrandLockup({ compact = false }: { compact?: boolean }) {
   return (
     <Image
-      accessibilityLabel="Genius logo"
+      accessibilityLabel="LeadX logo"
       source={require("./assets/leadx-logo-blue.png")}
       resizeMode="contain"
       style={compact ? styles.brandWordmarkCompact : styles.brandWordmark}
@@ -413,9 +413,7 @@ function TodayScreen({
     attendance.workMode !== "leave" &&
     attendance.workMode !== "notScheduled";
   const officeVerificationPending =
-    attendance.workMode === "office" &&
-    !attendance.developmentOfficeAction &&
-    !attendance.officeNetworkVerified;
+    attendance.workMode === "office" && !attendance.officeNetworkVerified;
 
   return (
     <>
@@ -490,10 +488,6 @@ function TodayScreen({
             {officeVerificationPending ? (
               <Text style={styles.actionHint}>
                 Connect through the verified company network to use office attendance.
-              </Text>
-            ) : attendance.developmentOfficeAction ? (
-              <Text style={styles.actionHint}>
-                Development test mode uses the protected HRMS office-attendance simulator.
               </Text>
             ) : (
               <Text style={styles.actionHint}>This attendance action is recorded directly in HRMS.</Text>

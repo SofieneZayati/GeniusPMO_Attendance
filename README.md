@@ -1,75 +1,60 @@
-# Genius PMO Attendance
+# LeadX Attendance
 
-Lightweight mobile attendance companion for the Genius PMO HRMS.
+LeadX Attendance is the employee attendance companion for the Genius PMO HRMS. Employees use their existing HRMS account, see the schedule and work mode selected by HRMS, and record check-in or check-out when the backend authorizes the action.
 
-## Scope
+The app does not let employees select or change their work mode. It does not duplicate HR, payroll, administration, projects, or document features from the web platform.
 
-Employees sign in with their existing HRMS account, see their basic work profile and today's schedule/attendance status, and will record attendance according to the work mode already approved in HRMS.
+## Attendance rules
 
-The app intentionally does **not** duplicate HR, payroll, admin, projects, documents, or other web-HRMS features.
+- Office attendance is enabled only when the HRMS backend identifies the request as coming from a configured approved company network.
+- Remote attendance works through the normal HTTPS API without company-LAN access.
+- External-site attendance works through the normal HTTPS API without company-LAN access.
+- Leave and non-working days remain blocked by HRMS business rules.
 
-## Architecture
+The buttons reflect server-authoritative readiness, and the check-in/check-out endpoints repeat the authorization. Changing the mobile UI cannot bypass the Office network rule.
 
-- Mobile client: this repository (Expo + React Native + TypeScript)
-- Authentication/API: existing `GeniusPMO_HRMS` FastAPI service
-- Database: existing HRMS PostgreSQL database
-- Session storage: encrypted device storage through Expo SecureStore
-- Office attendance proof: company-LAN verification will be added in the attendance-write phase
+## API connection
 
-The mobile app never connects directly to PostgreSQL and never decides its own work mode. HRMS remains the source of truth.
-
-## API connection model
-
-### Development
-
-Local phone testing is zero-config in the normal setup. Expo exposes the development host address to the running app, so the mobile client derives the PC's LAN address automatically and connects to the HRMS backend on port `8000`.
-
-This means moving between home, office, or another Wi-Fi network does not require editing the PC IP in `.env`, as long as:
-
-- Expo and the HRMS backend are running on the same development PC
-- the phone opens the project from that Expo development server
-- the phone and PC can reach each other on the local network
-
-If the backend uses another port, set `EXPO_PUBLIC_DEV_API_PORT`. If Expo is using tunnel mode or the backend runs on another machine, `EXPO_PUBLIC_API_BASE_URL` remains available as an explicit fallback.
-
-### Production
-
-Production does not use LAN discovery for the main HRMS API. The release build is configured once with a permanent HTTPS endpoint such as:
+Production builds require a permanent public HTTPS endpoint:
 
 ```env
-EXPO_PUBLIC_API_BASE_URL=https://api.geniuspmo.com/api/v1
+EXPO_PUBLIC_API_BASE_URL=https://REAL-COMPANY-API/api/v1
 ```
 
-Employees then use the same app configuration from any network. Office LAN discovery/proof is a separate attendance-security mechanism and will only be required for office check-in/out.
+The same endpoint serves login, profile, protected profile photo, schedule, attendance readiness, and attendance writes. HRMS verifies the original client address against its configured Office CIDRs; the URL itself is never treated as Office proof.
 
-## Current status
+Preview/internal builds may enable private-LAN discovery for local testing. Expo development can also derive the development PC address from Expo runtime configuration. Neither path embeds a laptop IP in source.
 
-The mobile client supports:
-
-- real HRMS employee login through a bearer session token
-- secure local session persistence
-- automatic session restoration
-- real employee profile data
-- real company-date schedule/work-mode state
-- real current attendance status
-- automatic local HRMS endpoint resolution during normal Expo development
-- sign out and manual refresh
-
-Check-in/check-out submission is intentionally not enabled yet. The next phase will add remote/external attendance writes and trusted company-LAN verification for office attendance.
-
-## Local phone testing
-
-1. Run the HRMS backend on the development PC.
-2. In this repository, install dependencies and start Expo:
+## Local development
 
 ```bash
-npm install
+npm ci
 npm start
 ```
 
-3. Open the project in Expo Go while the phone and PC are on the same Wi-Fi.
-4. Sign in with a real HRMS employee account.
+The normal Expo Go setup derives the development host and targets backend port `8000`. Set `EXPO_PUBLIC_DEV_API_PORT` only when a different port is needed. Use `EXPO_PUBLIC_API_BASE_URL` as an explicit fallback for a tunnel or separately hosted backend.
 
-You normally do **not** need to run `ipconfig` or edit an IP address when moving between networks.
+## Validation
 
-If local discovery cannot work because the network isolates devices, use an explicit API URL or test against the deployed HTTPS HRMS server instead.
+```bash
+npm run typecheck
+npx expo-doctor
+```
+
+The tracked npm lockfile is required for deterministic local and EAS dependency installation.
+
+## Android builds
+
+Preview/internal APK:
+
+```bash
+eas build --platform android --profile preview
+```
+
+Production build:
+
+```bash
+eas build --platform android --profile production
+```
+
+The production EAS environment must provide the real `EXPO_PUBLIC_API_BASE_URL`. The build configuration rejects a missing, non-HTTPS, or incorrectly based production URL.

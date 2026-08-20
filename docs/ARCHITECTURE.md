@@ -1,104 +1,47 @@
-# Genius PMO Attendance — architecture
-
-## Purpose
-
-This is a small employee attendance companion, not a mobile copy of the HRMS.
-
-The mobile app exposes only:
-
-- HRMS employee sign-in
-- basic work profile
-- today's approved work mode and schedule
-- attendance status
-- check-in and check-out
+# LeadX Attendance architecture
 
 ## Source of truth
 
-The existing `GeniusPMO_HRMS` FastAPI backend and PostgreSQL database remain the only source of truth. This repository must not introduce a second employee database or an independent attendance backend.
+The Genius PMO HRMS FastAPI backend and PostgreSQL database remain the only source of truth. The mobile app cannot choose an employee work mode and does not own employee or attendance data.
 
-## HRMS connection
-
-### Development
-
-During normal Expo development, the app derives the development PC host from Expo's runtime configuration and targets the HRMS backend on port `8000`. This avoids storing a different LAN IP every time the developer changes network.
-
-An explicit `EXPO_PUBLIC_API_BASE_URL` remains a fallback when automatic development resolution is not possible, for example when Expo tunnel mode is used or the backend runs on another machine.
-
-### Production
-
-The release build uses one permanent public HTTPS HRMS API endpoint configured through `EXPO_PUBLIC_API_BASE_URL`. The mobile app therefore does not need to discover the production HRMS server on the local network.
+## Production request flow
 
 ```text
-Mobile app ── HTTPS ──> public HRMS FastAPI ──> PostgreSQL
-```
-
-The same endpoint serves login, profile, today's schedule/work mode, and non-office attendance operations from any network.
-
-## Attendance authorization
-
-The mobile app never decides whether an employee is remote, external, or office-based. It asks the HRMS backend for today's approved assignment.
-
-- **Office:** check-in/out requires proof through an office-only LAN attendance gateway.
-- **Remote:** check-in/out is accepted by the public HRMS API only when today's approved assignment is remote.
-- **External site:** check-in/out is accepted by the public HRMS API only when today's approved assignment is external.
-- **Leave / not scheduled:** attendance actions are rejected.
-
-No Face ID, fingerprint, or phone biometric capability is required.
-
-## Request flow
-
-Normal authenticated mobile traffic:
-
-```text
-Mobile app
-   |
-   | HTTPS authenticated employee bearer session
-   v
+LeadX Attendance
+      |
+      | HTTPS + employee bearer session
+      v
+Company reverse proxy
+      |
+      | replaces X-Forwarded-For with the observed client chain
+      v
 Genius PMO HRMS FastAPI
-   |
-   +--> employee profile
-   +--> today's schedule/work assignment
-   +--> attendance state and authorization
-   |
-   v
-Existing PostgreSQL records
+      |
+      v
+PostgreSQL
 ```
 
-Office attendance adds a separate local proof path:
+The normal public HTTPS API serves authentication, profile data, protected photos, schedule/work mode, attendance readiness, and check-in/check-out.
 
-```text
-Mobile app -> trusted office LAN gateway -> HRMS FastAPI -> PostgreSQL
-```
+## Office network authorization
 
-The gateway is not the HRMS backend and does not own employee data. Its only purpose is to prove that an office attendance action originated through an approved company network/site. The HRMS backend must reject direct office attendance writes without valid gateway proof.
+FastAPI determines the original client address from the direct connection. Forwarded addresses are considered only when the direct peer belongs to `TRUSTED_PROXY_NETWORKS`. The trusted proxy chain is evaluated from right to left so a client-controlled left-side value cannot override the address observed by the boundary proxy.
 
-## Security direction for the office gateway
+The resolved address must belong to `OFFICE_TRUSTED_NETWORKS`. Empty lists fail closed. A deployment may approve the company's fixed public egress address, or use split DNS/a local proxy path that preserves an approved private client address.
 
-Discovering a service on the LAN is not enough to trust it. A future gateway should be registered with the HRMS and use short-lived signed proof so a fake service on another Wi-Fi cannot authorize attendance.
+The mobile readiness response includes `office_network_verified`, `can_check_in`, and `can_check_out`. These fields control button feedback, but the write endpoints independently repeat the same network and HRMS schedule checks.
 
-The expected flow is:
+## Work-mode behavior
 
-```text
-phone discovers local gateway
-        -> gateway produces short-lived proof
-        -> phone submits attendance action + proof
-        -> HRMS verifies employee, assignment, gateway/site and replay protection
-        -> attendance event is recorded
-```
+- Office: requires server-verified approved network membership.
+- Remote: allowed through the public HTTPS API when the HRMS schedule permits it.
+- External site: allowed through the public HTTPS API when the HRMS schedule permits it.
+- Leave or not scheduled: rejected.
 
-## Current API usage
+All accepted writes are recorded as the `mobile` attendance method while historical `fingerprint`, `card`, `manual`, and `import` methods remain valid.
 
-The current mobile app uses the existing HRMS endpoints rather than duplicating them:
+## Development and preview
 
-- `POST /api/v1/auth/mobile/login`
-- `GET /api/v1/auth/me`
-- `GET /api/v1/employee-self-service/profile`
-- `GET /api/v1/employee-self-service/attendance-readiness/state`
+Expo Go derives the development host from Expo runtime configuration. Preview/internal APKs may scan the current private IPv4 subnet for the HRMS health endpoint when LAN discovery is enabled. The backend still decides whether the connection is an approved Office network; discovering a private-looking URL is never authorization.
 
-Dedicated attendance-write endpoints will be added when check-in/check-out rules and office gateway proof are implemented.
-
-## Current status
-
-Real employee login, secure session persistence, profile loading, today's schedule/work-mode state, attendance state, and zero-config normal Expo development routing are implemented.
-
-Check-in/check-out writes and the trusted office LAN gateway are the next implementation phase.
+Production builds use `EXPO_PUBLIC_API_BASE_URL=https://REAL-COMPANY-API/api/v1` and reject an invalid production endpoint during Expo configuration.
