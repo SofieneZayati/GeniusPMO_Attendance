@@ -1,11 +1,15 @@
 import { resolveApiEndpoint } from "../config/api-endpoint";
 import type {
   AttendanceReadinessResponse,
+  AttendanceSimulatorScanResponse,
   CurrentUser,
   MobileLoginResponse,
   MobileTodayResponse,
-  SelfServiceProfileResponse
+  SelfServiceProfileResponse,
+  WorkMode
 } from "../types";
+
+type AttendanceAction = "check_in" | "check_out";
 
 export class HrmsApiError extends Error {
   constructor(
@@ -76,12 +80,18 @@ function mapToday(
       ? "completed"
       : "working"
     : "notCheckedIn";
+  const directMobileMode =
+    attendance.work_mode === "remote" || attendance.work_mode === "externalSite";
+  const developmentOfficeAction =
+    attendance.work_mode === "office" && attendance.can_simulate_scan;
+  const canAct = directMobileMode || developmentOfficeAction;
 
   return {
     employee: {
       id: profile.id,
       employeeNo: profile.employee_no,
       name: profile.name,
+      hasProfilePhoto: profile.has_profile_photo,
       email: profile.email,
       phone: profile.phone,
       position: profile.job_title,
@@ -101,8 +111,9 @@ function mapToday(
       checkIn: attendance.entry_time ?? undefined,
       checkOut: attendance.exit_time ?? undefined,
       officeNetworkVerified: false,
-      canCheckIn: false,
-      canCheckOut: false
+      canCheckIn: state === "notCheckedIn" && canAct,
+      canCheckOut: state === "working" && canAct,
+      developmentOfficeAction
     }
   };
 }
@@ -115,6 +126,14 @@ export const hrmsApi = {
     }),
 
   me: (accessToken: string) => request<CurrentUser>("/auth/me", undefined, accessToken),
+
+  profilePhotoSource: (accessToken: string) => {
+    const { baseUrl } = resolveApiEndpoint();
+    return {
+      uri: `${baseUrl}/employee-self-service/profile-photo`,
+      headers: { Authorization: `Bearer ${accessToken}` }
+    };
+  },
 
   today: async (accessToken: string) => {
     const [profile, attendance] = await Promise.all([
@@ -131,5 +150,29 @@ export const hrmsApi = {
     ]);
 
     return mapToday(profile, attendance);
+  },
+
+  recordAttendance: async (
+    accessToken: string,
+    action: AttendanceAction,
+    workMode: WorkMode
+  ) => {
+    if (workMode === "office") {
+      return request<AttendanceSimulatorScanResponse>(
+        "/employee-self-service/attendance-readiness/simulator/scan",
+        {
+          method: "POST",
+          body: JSON.stringify({})
+        },
+        accessToken
+      );
+    }
+
+    const endpoint = action === "check_in" ? "check-in" : "check-out";
+    return request<AttendanceReadinessResponse>(
+      `/mobile/attendance/${endpoint}`,
+      { method: "POST" },
+      accessToken
+    );
   }
 };
