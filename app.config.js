@@ -1,6 +1,7 @@
 module.exports = ({ config }) => {
   const apiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim() ?? "";
-  const allowCleartextTraffic = apiBaseUrl.startsWith("http://");
+  const lanDiscoveryEnabled = process.env.EXPO_PUBLIC_ENABLE_LAN_DISCOVERY === "true";
+  const allowCleartextTraffic = lanDiscoveryEnabled || apiBaseUrl.startsWith("http://");
 
   return {
     ...config,
