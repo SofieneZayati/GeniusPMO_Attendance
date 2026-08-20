@@ -69,7 +69,6 @@ export type SelfServiceProfileResponse = {
 };
 
 export type AttendanceReadinessResponse = {
-  simulator_enabled: boolean;
   work_date: string;
   scheduled: boolean;
   schedule_start: string | null;
@@ -79,13 +78,4 @@ export type AttendanceReadinessResponse = {
   entry_time: string | null;
   exit_time: string | null;
   next_action: "check_in" | "check_out" | null;
-  can_simulate_scan: boolean;
-};
-
-export type AttendanceSimulatorScanResponse = {
-  event_id: number;
-  event_type: "entry" | "exit";
-  event_time: string;
-  result: string;
-  state: AttendanceReadinessResponse;
 };
