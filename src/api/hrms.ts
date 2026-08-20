@@ -1,15 +1,14 @@
 import {
   invalidateApiEndpoint,
-  isOfficeNetworkEndpoint,
   resolveApiEndpoint
 } from "../config/api-endpoint";
 import type {
   AttendanceReadinessResponse,
   CurrentUser,
   MobileLoginResponse,
+  MobileAttendanceStateResponse,
   MobileTodayResponse,
-  SelfServiceProfileResponse,
-  WorkMode
+  SelfServiceProfileResponse
 } from "../types";
 
 type AttendanceAction = "check_in" | "check_out";
@@ -153,20 +152,14 @@ async function cacheProfilePhoto(
 
 function mapToday(
   profile: SelfServiceProfileResponse,
-  attendance: AttendanceReadinessResponse,
-  protectedPhotoLoaded: boolean,
-  officeNetworkVerified: boolean
+  attendance: MobileAttendanceStateResponse,
+  protectedPhotoLoaded: boolean
 ): MobileTodayResponse {
   const state = attendance.entry_time
     ? attendance.exit_time
       ? "completed"
       : "working"
     : "notCheckedIn";
-  const directMobileMode =
-    attendance.work_mode === "remote" ||
-    attendance.work_mode === "externalSite" ||
-    (attendance.work_mode === "office" && officeNetworkVerified);
-
   return {
     employee: {
       id: profile.id,
@@ -191,10 +184,9 @@ function mapToday(
       status: attendance.status,
       checkIn: attendance.entry_time ?? undefined,
       checkOut: attendance.exit_time ?? undefined,
-      officeNetworkVerified,
-      canCheckIn: state === "notCheckedIn" && directMobileMode,
-      canCheckOut: state === "working" && directMobileMode,
-      developmentOfficeAction: false
+      officeNetworkVerified: attendance.office_network_verified,
+      canCheckIn: attendance.can_check_in,
+      canCheckOut: attendance.can_check_out
     }
   };
 }
@@ -213,40 +205,24 @@ export const hrmsApi = {
   }),
 
   today: async (accessToken: string) => {
-    const endpoint = await resolveApiEndpoint();
-    const officeNetworkVerified = isOfficeNetworkEndpoint(endpoint);
     const [profile, attendance] = await Promise.all([
       request<SelfServiceProfileResponse>(
         "/employee-self-service/profile",
         undefined,
         accessToken
       ),
-      request<AttendanceReadinessResponse>(
-        "/employee-self-service/attendance-readiness/state",
+      request<MobileAttendanceStateResponse>(
+        "/mobile/attendance/state",
         undefined,
         accessToken
       )
     ]);
 
     const protectedPhotoLoaded = await cacheProfilePhoto(profile, accessToken);
-    return mapToday(profile, attendance, protectedPhotoLoaded, officeNetworkVerified);
+    return mapToday(profile, attendance, protectedPhotoLoaded);
   },
 
-  recordAttendance: async (
-    accessToken: string,
-    action: AttendanceAction,
-    workMode: WorkMode
-  ) => {
-    if (workMode === "office") {
-      const endpoint = await resolveApiEndpoint();
-      if (!isOfficeNetworkEndpoint(endpoint)) {
-        throw new HrmsApiError(
-          "Connect to the same local network as the HRMS server to record office attendance.",
-          403
-        );
-      }
-    }
-
+  recordAttendance: async (accessToken: string, action: AttendanceAction) => {
     const endpoint = action === "check_in" ? "check-in" : "check-out";
     return request<AttendanceReadinessResponse>(
       `/mobile/attendance/${endpoint}`,
