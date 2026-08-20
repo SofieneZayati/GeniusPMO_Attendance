@@ -11,6 +11,13 @@ import type {
 
 type AttendanceAction = "check_in" | "check_out";
 
+type CachedProfilePhoto = {
+  accessToken: string;
+  dataUri: string;
+};
+
+let cachedProfilePhoto: CachedProfilePhoto | null = null;
+
 export class HrmsApiError extends Error {
   constructor(
     message: string,
@@ -71,9 +78,68 @@ async function request<T>(path: string, init?: RequestInit, accessToken?: string
   return response.json() as Promise<T>;
 }
 
+function blobToDataUri(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("The protected profile photo could not be read."));
+    reader.onloadend = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+      } else {
+        reject(new Error("The protected profile photo could not be decoded."));
+      }
+    };
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function protectedImageDataUri(path: string, accessToken: string): Promise<string> {
+  const { baseUrl } = resolveApiEndpoint();
+  const response = await fetch(`${baseUrl}${path}`, {
+    headers: {
+      Accept: "image/*",
+      Authorization: `Bearer ${accessToken}`
+    }
+  });
+
+  if (!response.ok) {
+    const rawBody = await response.text();
+    throw new HrmsApiError(responseErrorMessage(response.status, rawBody), response.status);
+  }
+
+  return blobToDataUri(await response.blob());
+}
+
+async function cacheProfilePhoto(
+  profile: SelfServiceProfileResponse,
+  accessToken: string
+): Promise<boolean> {
+  if (!profile.has_profile_photo) {
+    if (cachedProfilePhoto?.accessToken === accessToken) cachedProfilePhoto = null;
+    return false;
+  }
+
+  if (cachedProfilePhoto?.accessToken === accessToken) return true;
+
+  try {
+    cachedProfilePhoto = {
+      accessToken,
+      dataUri: await protectedImageDataUri(
+        "/employee-self-service/profile-photo",
+        accessToken
+      )
+    };
+    return true;
+  } catch {
+    if (cachedProfilePhoto?.accessToken === accessToken) cachedProfilePhoto = null;
+    return false;
+  }
+}
+
 function mapToday(
   profile: SelfServiceProfileResponse,
-  attendance: AttendanceReadinessResponse
+  attendance: AttendanceReadinessResponse,
+  protectedPhotoLoaded: boolean
 ): MobileTodayResponse {
   const state = attendance.entry_time
     ? attendance.exit_time
@@ -91,7 +157,7 @@ function mapToday(
       id: profile.id,
       employeeNo: profile.employee_no,
       name: profile.name,
-      hasProfilePhoto: profile.has_profile_photo,
+      hasProfilePhoto: profile.has_profile_photo && protectedPhotoLoaded,
       email: profile.email,
       phone: profile.phone,
       position: profile.job_title,
@@ -127,13 +193,9 @@ export const hrmsApi = {
 
   me: (accessToken: string) => request<CurrentUser>("/auth/me", undefined, accessToken),
 
-  profilePhotoSource: (accessToken: string) => {
-    const { baseUrl } = resolveApiEndpoint();
-    return {
-      uri: `${baseUrl}/employee-self-service/profile-photo`,
-      headers: { Authorization: `Bearer ${accessToken}` }
-    };
-  },
+  profilePhotoSource: (accessToken: string) => ({
+    uri: cachedProfilePhoto?.accessToken === accessToken ? cachedProfilePhoto.dataUri : ""
+  }),
 
   today: async (accessToken: string) => {
     const [profile, attendance] = await Promise.all([
@@ -149,7 +211,8 @@ export const hrmsApi = {
       )
     ]);
 
-    return mapToday(profile, attendance);
+    const protectedPhotoLoaded = await cacheProfilePhoto(profile, accessToken);
+    return mapToday(profile, attendance, protectedPhotoLoaded);
   },
 
   recordAttendance: async (
