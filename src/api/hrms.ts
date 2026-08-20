@@ -71,6 +71,38 @@ async function request<T>(path: string, init?: RequestInit, accessToken?: string
   return response.json() as Promise<T>;
 }
 
+function blobToDataUri(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("The protected profile photo could not be read."));
+    reader.onloadend = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+      } else {
+        reject(new Error("The protected profile photo could not be decoded."));
+      }
+    };
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function protectedImageDataUri(path: string, accessToken: string): Promise<string> {
+  const { baseUrl } = resolveApiEndpoint();
+  const response = await fetch(`${baseUrl}${path}`, {
+    headers: {
+      Accept: "image/*",
+      Authorization: `Bearer ${accessToken}`
+    }
+  });
+
+  if (!response.ok) {
+    const rawBody = await response.text();
+    throw new HrmsApiError(responseErrorMessage(response.status, rawBody), response.status);
+  }
+
+  return blobToDataUri(await response.blob());
+}
+
 function mapToday(
   profile: SelfServiceProfileResponse,
   attendance: AttendanceReadinessResponse
@@ -127,13 +159,8 @@ export const hrmsApi = {
 
   me: (accessToken: string) => request<CurrentUser>("/auth/me", undefined, accessToken),
 
-  profilePhotoSource: (accessToken: string) => {
-    const { baseUrl } = resolveApiEndpoint();
-    return {
-      uri: `${baseUrl}/employee-self-service/profile-photo`,
-      headers: { Authorization: `Bearer ${accessToken}` }
-    };
-  },
+  profilePhotoDataUri: (accessToken: string) =>
+    protectedImageDataUri("/employee-self-service/profile-photo", accessToken),
 
   today: async (accessToken: string) => {
     const [profile, attendance] = await Promise.all([
