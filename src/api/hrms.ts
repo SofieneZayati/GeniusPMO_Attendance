@@ -1,7 +1,6 @@
 import { resolveApiEndpoint } from "../config/api-endpoint";
 import type {
   AttendanceReadinessResponse,
-  AttendanceSimulatorScanResponse,
   CurrentUser,
   MobileLoginResponse,
   MobileTodayResponse,
@@ -148,9 +147,6 @@ function mapToday(
     : "notCheckedIn";
   const directMobileMode =
     attendance.work_mode === "remote" || attendance.work_mode === "externalSite";
-  const developmentOfficeAction =
-    attendance.work_mode === "office" && attendance.can_simulate_scan;
-  const canAct = directMobileMode || developmentOfficeAction;
 
   return {
     employee: {
@@ -177,9 +173,9 @@ function mapToday(
       checkIn: attendance.entry_time ?? undefined,
       checkOut: attendance.exit_time ?? undefined,
       officeNetworkVerified: false,
-      canCheckIn: state === "notCheckedIn" && canAct,
-      canCheckOut: state === "working" && canAct,
-      developmentOfficeAction
+      canCheckIn: state === "notCheckedIn" && directMobileMode,
+      canCheckOut: state === "working" && directMobileMode,
+      developmentOfficeAction: false
     }
   };
 }
@@ -221,13 +217,9 @@ export const hrmsApi = {
     workMode: WorkMode
   ) => {
     if (workMode === "office") {
-      return request<AttendanceSimulatorScanResponse>(
-        "/employee-self-service/attendance-readiness/simulator/scan",
-        {
-          method: "POST",
-          body: JSON.stringify({})
-        },
-        accessToken
+      throw new HrmsApiError(
+        "Office attendance requires verified company-network access.",
+        403
       );
     }
 
