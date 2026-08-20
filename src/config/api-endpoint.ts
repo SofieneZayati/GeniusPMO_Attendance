@@ -20,7 +20,7 @@ function configuredBaseUrl() {
 }
 
 function isDevelopmentLanHost(hostname: string) {
-  const normalized = hostname.toLowerCase();
+  const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, "");
 
   if (normalized === "localhost" || normalized === "127.0.0.1") return false;
   if (normalized.endsWith(".local")) return true;
@@ -31,9 +31,10 @@ function isDevelopmentLanHost(hostname: string) {
     return true;
   }
 
-  const parts = normalized.split(".").map(Number);
-  if (parts.length === 4 && parts.every((part) => Number.isInteger(part))) {
-    return parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31;
+  const secondOctet = /^172\.(\d+)\./.exec(normalized)?.[1];
+  if (secondOctet) {
+    const value = Number(secondOctet);
+    return value >= 16 && value <= 31;
   }
 
   return false;
@@ -51,7 +52,8 @@ function developmentAutoBaseUrl() {
     if (!hostname || !isDevelopmentLanHost(hostname)) return null;
 
     const port = process.env.EXPO_PUBLIC_DEV_API_PORT?.trim() || DEFAULT_DEV_API_PORT;
-    const host = hostname.includes(":") ? `[${hostname}]` : hostname;
+    const unwrappedHost = hostname.replace(/^\[|\]$/g, "");
+    const host = unwrappedHost.includes(":") ? `[${unwrappedHost}]` : unwrappedHost;
     return `http://${host}:${port}${API_PATH}`;
   } catch {
     return null;
